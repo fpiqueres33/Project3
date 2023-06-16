@@ -1,4 +1,4 @@
-#import nltk
+
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from sklearn.metrics.pairwise import cosine_similarity
@@ -15,9 +15,18 @@ stop_words = set(stopwords.words('spanish'))
 
 
 # preguntar por el fichero y leerlo. Encoding utf-8 para evitar problemas con caracteres especiales
-def input_path():
+def input_path_and_percentile():
     file_path = input("Indicar archivo con ruta completa (formato txt) --> ")
-    return file_path
+    percentile_input = input("Introduzca el percentil (0-100) para seleccionar las frases principales (por defecto 80) --> ")
+    try:
+        percentile = int(percentile_input)
+        if percentile < 0 or percentile > 100:
+            print("El percentil debe estar entre 0 y 100. Se utilizará el valor por defecto de 80.")
+            percentile = 80
+    except ValueError:
+        print("Entrada no válida. Se utilizará el valor por defecto de 80.")
+        percentile = 80
+    return file_path, percentile
 
 def read_file(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -67,23 +76,30 @@ def extract_key_phrases(text, num_phrases=3):
     return key_phrases_with_scores_normalized
 
 # Generador de resumen por el top de oraciones con mayor similitud.
-def find_top_sentences(similarity_matrix, sentences):
-    # Suma de similitud de las oraciones
+def find_top_sentences(similarity_matrix, sentences, percentile=80):
+    # Sum of sentence similarities
     sum_similarities = np.sum(similarity_matrix, axis=1)
 
-    # Normalizar metricas
-    sum_similarities = sum_similarities / np.sum(sum_similarities)
+    print(type(sum_similarities))  # Debug line
+    print(sum_similarities)  # Debug line
 
-    # Calcular la media y multiplicar por 1.75 para elegir el top de las frases más relevantes.
-    mean_score = np.mean(sum_similarities) * 1.75
+    # Normalize metrics
+    total_sum = np.sum(sum_similarities)
+    if total_sum != 0:
+        sum_similarities = sum_similarities / total_sum
 
-    # Obtener el índice de las frases mas similares
-    top_indexes = [index for index in range(len(sentences)) if sum_similarities[index] > mean_score]
+    # Calculate the threshold score at a certain percentile
+    threshold_score = np.percentile(sum_similarities, percentile)
 
-    # Obtener las frases más relevantes
-    top_sentences = [(sentences[index], sum_similarities[index]) for index in top_indexes]
+    # Get the indexes of the sentences with similarity scores higher than the threshold score
+    top_indexes = [index for index in range(len(sentences)) if sum_similarities[index] > threshold_score]
+
+    # Sort the top sentences based on their similarity scores
+    top_sentences = sorted([(sentences[index], sum_similarities[index]) for index in top_indexes],
+                           key=lambda x: x[1], reverse=True)
 
     return top_sentences
+
 
 # Salida adicional con entidades reconocidas.
 def named_entity_recognition(text):
@@ -102,7 +118,7 @@ def named_entity_recognition(text):
 
 # Función para el main
 def main():
-    file_path = input_path()
+    file_path, percentile = input_path_and_percentile()
     data = read_file(file_path)
     sentences = sentence_segment(data)
     tokens = word_tokenization(sentences)
@@ -110,7 +126,7 @@ def main():
     similarity_matrix = find_similarity(lemmas)
     topics = generate_topics(lemmas)
     topics2 = extract_key_phrases(data)
-    top_sentences = find_top_sentences(similarity_matrix, sentences)
+    top_sentences = find_top_sentences(similarity_matrix, sentences, percentile)
     named_entities = named_entity_recognition(data)
 
     print("Los tópicos propuestos mediante LDA son:")
